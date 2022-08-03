@@ -1,11 +1,13 @@
 
 extern crate ncurses;
-//use ncurses;
+extern crate simplelog;
+extern crate log;
 
 use std::env;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use simplelog::*;
 
 /*
 struct GlobalCtrl {
@@ -66,12 +68,19 @@ fn update_dir_screen(basepath: &PathBuf, cursor: i16) -> Vec<PathBuf> {
     } 
 
     ncurses::clrtobot();
+
+    //let maxy = ncurses::getmaxy(ncurses::stdscr());
+    //ncurses::mvaddstr(maxy, 0, "BOTTOM LINE PROMPT");
+    
     ncurses::refresh();
 
     return dir_children;
 }
 
 fn main() {
+
+    WriteLogger::init(LevelFilter::Debug, Config::default(), 
+        fs::File::create(".cdls.log").unwrap());
 
     let rst = env::current_dir();
     let mut cur_path = match rst {
@@ -116,14 +125,18 @@ fn main() {
                 cur_path.pop();
             },
             ncurses::KEY_RIGHT => {
-                let sub_ele = dir_children[cursor as usize].clone();
-                if sub_ele.is_dir() {
-                    cur_path.push(sub_ele.file_name().expect(""));
+                let child = &dir_children[cursor as usize];
+                if child.is_dir() {
+                    cur_path.push(child.file_name().expect(""));
                 }                
             },
-
+            /*
+            ncurses::CTRL('q') => {
+                break;
+            },*/
             _ => {
                 // ncurses::mvaddstr(10, 0, &format!("press {}", ch));
+                log::debug!("press {}", ch);
             }
         }
     
