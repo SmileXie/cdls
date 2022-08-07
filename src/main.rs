@@ -31,7 +31,7 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
                 children.push(file.path());
             },
             Err(e) => {
-                println!("error: {}", e);
+                log::warn!("error: {}", e);
                 continue;
             }
         }
@@ -40,7 +40,7 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
     return children;
 }
 
-fn update_dir_screen(basepath: &PathBuf, cursor: i16) -> Vec<PathBuf> {
+fn update_dir_screen(basepath: &PathBuf, cursor: usize) -> Vec<PathBuf> {
 
     ncurses::mv(0, 0);
 
@@ -79,14 +79,23 @@ fn update_dir_screen(basepath: &PathBuf, cursor: i16) -> Vec<PathBuf> {
 
 fn main() {
 
-    WriteLogger::init(LevelFilter::Debug, Config::default(), 
-        fs::File::create(".cdls.log").unwrap());
+    // todo!("Create log file only in debug mode, which is passed as an argument");
+
+    match fs::File::create(".cdls.log") {
+        Ok(fd) => {
+            WriteLogger::init(LevelFilter::Debug, Config::default(), fd);
+        },
+        Err(io_error) => {
+            println!("Fail to create log file {}, {}", ".cdls.log", io_error);
+            return;
+        },
+    };  
 
     let rst = env::current_dir();
     let mut cur_path = match rst {
         Ok(path) => path,
         Err(e) => {
-            println!("Fail to open current directory. {}", e);
+            log::error!("Fail to open current directory. {}", e);
             return;
         }
     };
@@ -108,32 +117,38 @@ fn main() {
     ncurses::init_color(COLOR_FOREGROUND, 0xee * 4, 0xee * 4, 0xee * 4);
     ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, COLOR_BACKGROUND, COLOR_FOREGROUND);
 
-    let mut cursor: i16 = 0;
+    let mut cursor: usize = 0;
 
     loop {
         let dir_children = update_dir_screen(&cur_path, cursor);
         let ch = ncurses::getch();
         match ch {
             ncurses::KEY_UP => {
-                cursor -= 1;
-                if cursor < 0 {
-                    cursor = 0;
+                if cursor > 0 {
+                    cursor -= 1;
                 }
             },
-            ncurses::KEY_DOWN => cursor += 1,
+            ncurses::KEY_DOWN => {
+                if cursor < dir_children.len() - 1 {
+                    cursor += 1;
+                }
+            },
             ncurses::KEY_LEFT => {
                 cur_path.pop();
             },
             ncurses::KEY_RIGHT => {
-                let child = &dir_children[cursor as usize];
+                let child = &dir_children[cursor];
                 if child.is_dir() {
                     cur_path.push(child.file_name().expect(""));
                 }                
             },
-            /*
-            ncurses::CTRL('q') => {
+            ncurses::KEY_ENTER => {
+
+            },
+            113 => { /* q */
+                log::debug!("q pressed, exit");
                 break;
-            },*/
+            },
             _ => {
                 // ncurses::mvaddstr(10, 0, &format!("press {}", ch));
                 log::debug!("press {}", ch);
