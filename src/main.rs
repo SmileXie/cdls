@@ -135,15 +135,22 @@ fn main() {
             },
             ncurses::KEY_LEFT => {
                 cur_path.pop();
+                cursor = 0;
             },
             ncurses::KEY_RIGHT => {
                 let child = &dir_children[cursor];
                 if child.is_dir() {
                     cur_path.push(child.file_name().expect(""));
-                }                
+                    cursor = 0;
+                }                  
             },
-            ncurses::KEY_ENTER => {
-
+            10 => { // enter
+                let mut child =  dir_children[cursor].clone();
+                if !child.is_dir() {
+                    child.pop();
+                }
+                env::set_current_dir(child).unwrap();
+                break;
             },
             113 => { /* q */
                 log::debug!("q pressed, exit");
