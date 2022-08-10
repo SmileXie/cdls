@@ -8,6 +8,10 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use simplelog::*;
+use std::process::Command;
+use std::process::exit;
+use std::os::unix::process::CommandExt;
+use std::env::set_current_dir;
 
 /*
 struct GlobalCtrl {
@@ -149,7 +153,12 @@ fn main() {
                 if !child.is_dir() {
                     child.pop();
                 }
-                env::set_current_dir(child).unwrap();
+                set_current_dir(&child).unwrap();
+
+                // Command::new("sh").arg("-s").arg("-i").exec();
+                Command::new("bash").exec();
+                // todo!("bash不换行,无echo,可能是ncurses修改了屏幕参数");
+                // https://www.learnfk.com/en/question/rust/53477846.html
                 break;
             },
             113 => { /* q */
@@ -164,6 +173,11 @@ fn main() {
     
     }
 
+    ncurses::echo();
+    ncurses::keypad(ncurses::stdscr(), false);
+    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE);
     /* Terminate ncurses. */
     ncurses::endwin();
+
+    exit(0);
 }
