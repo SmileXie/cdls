@@ -155,10 +155,6 @@ fn main() {
                 }
                 set_current_dir(&child).unwrap();
 
-                // Command::new("sh").arg("-s").arg("-i").exec();
-                Command::new("bash").exec();
-                // todo!("bash不换行,无echo,可能是ncurses修改了屏幕参数");
-                // https://www.learnfk.com/en/question/rust/53477846.html
                 break;
             },
             113 => { /* q */
@@ -178,6 +174,8 @@ fn main() {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE);
     /* Terminate ncurses. */
     ncurses::endwin();
+
+    Command::new("bash").exec();
 
     exit(0);
 }
