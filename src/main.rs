@@ -44,17 +44,26 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
     return children;
 }
 
-fn update_dir_screen(basepath: &PathBuf, cursor: usize) -> Vec<PathBuf> {
+fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32) -> (Vec<PathBuf>, usize) {
 
     ncurses::mv(0, 0);
 
-    let bar_str = format!("CDLS # {} ...\n", basepath.to_str().unwrap());
+    let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
     ncurses::addstr(&bar_str);
 
     let dir_children = get_current_dir_element(basepath);
 
     let mut idx = 0;
     for child in &dir_children {
+        if idx < start_idx {
+            idx += 1;
+            continue;
+        }
+        if idx - start_idx >= (maxy - 2) as usize {
+            ncurses::addstr("\t...\n");
+            break;
+        }
+
         if idx == cursor {
             ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
         } 
@@ -73,12 +82,12 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize) -> Vec<PathBuf> {
 
     ncurses::clrtobot();
 
-    //let maxy = ncurses::getmaxy(ncurses::stdscr());
+    
     //ncurses::mvaddstr(maxy, 0, "BOTTOM LINE PROMPT");
     
     ncurses::refresh();
 
-    return dir_children;
+    return (dir_children, start_idx);
 }
 
 fn main() {
@@ -122,19 +131,28 @@ fn main() {
     ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, COLOR_BACKGROUND, COLOR_FOREGROUND);
 
     let mut cursor: usize = 0;
+    let mut start_idx: usize = 0;
+    let mut maxy = ncurses::getmaxy(ncurses::stdscr());
 
     loop {
-        let dir_children = update_dir_screen(&cur_path, cursor);
+        let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy);
         let ch = ncurses::getch();
+        maxy = ncurses::getmaxy(ncurses::stdscr());
         match ch {
             ncurses::KEY_UP => {
                 if cursor > 0 {
                     cursor -= 1;
+                    if start_idx > 0 && cursor <= start_idx {
+                        start_idx -= 1;
+                    }
                 }
             },
             ncurses::KEY_DOWN => {
                 if cursor < dir_children.len() - 1 {
                     cursor += 1;
+                    if cursor - start_idx >= (maxy - 2) as usize {
+                        start_idx += 1;
+                    }
                 }
             },
             ncurses::KEY_LEFT => {
@@ -148,7 +166,7 @@ fn main() {
                     cursor = 0;
                 }                  
             },
-            10 => { // enter
+            10 | ncurses::KEY_ENTER => { // enter
                 let mut child =  dir_children[cursor].clone();
                 if !child.is_dir() {
                     child.pop();
@@ -175,6 +193,7 @@ fn main() {
     /* Terminate ncurses. */
     ncurses::endwin();
 
+    // todo kill parent bash process
     Command::new("bash").exec();
 
     exit(0);
