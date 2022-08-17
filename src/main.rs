@@ -5,7 +5,7 @@ extern crate log;
 
 use std::env;
 use std::fs;
-use std::io;
+//use std::io;
 use std::path::PathBuf;
 use simplelog::*;
 use std::process::Command;
@@ -92,24 +92,41 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
 fn main() {
 
-    // todo!("Create log file only in debug mode, which is passed as an argument");
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 2 {
+        // toto!("print help")
+        exit(0);
+    }
 
-    match fs::File::create(".cdls.log") {
-        Ok(fd) => {
-            WriteLogger::init(LevelFilter::Debug, Config::default(), fd);
-        },
-        Err(io_error) => {
-            println!("Fail to create log file {}, {}", ".cdls.log", io_error);
-            return;
-        },
-    };  
+    let mut debug_mode = false;
+    if args.len() == 2 {
+        if args[1] == "--help" || args[1] == "-h" {
+            // toto!("print help")
+            exit(0);
+        }
+        if args[1] == "--debug" {
+            debug_mode = true;
+        }
+    }
+
+    if debug_mode {
+        match fs::File::create(".cdls.log") {
+            Ok(fd) => {
+                WriteLogger::init(LevelFilter::Debug, Config::default(), fd).unwrap();
+            },
+            Err(io_error) => {
+                println!("Fail to create log file {}, {}", ".cdls.log", io_error);
+                exit(1);
+            },
+        };  
+    }
 
     let rst = env::current_dir();
     let mut cur_path = match rst {
         Ok(path) => path,
         Err(e) => {
             log::error!("Fail to open current directory. {}", e);
-            return;
+            exit(1);
         }
     };
 /*
@@ -158,12 +175,14 @@ fn main() {
             ncurses::KEY_LEFT => {
                 cur_path.pop();
                 cursor = 0;
+                start_idx = 0;
             },
             ncurses::KEY_RIGHT => {
                 let child = &dir_children[cursor];
                 if child.is_dir() {
                     cur_path.push(child.file_name().expect(""));
                     cursor = 0;
+                    start_idx = 0;
                 }                  
             },
             10 | ncurses::KEY_ENTER => { // enter
@@ -176,7 +195,7 @@ fn main() {
                 break;
             },
             113 => { /* q */
-                log::debug!("q pressed, exit");
+                log::warn!("q pressed, exit");
                 break;
             },
             _ => {
