@@ -59,6 +59,12 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
             idx += 1;
             continue;
         }
+
+        if start_idx > 0 && idx == start_idx {
+            ncurses::addstr("\t...\n");
+            idx += 1;
+            continue;
+        }
         if idx - start_idx >= (maxy - 2) as usize {
             ncurses::addstr("\t...\n");
             break;
@@ -82,26 +88,38 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
     ncurses::clrtobot();
 
-    
-    //ncurses::mvaddstr(maxy, 0, "BOTTOM LINE PROMPT");
+        //ncurses::mvaddstr(maxy, 0, "BOTTOM LINE PROMPT");
     
     ncurses::refresh();
 
     return (dir_children, start_idx);
 }
 
+fn print_help() {
+    println!("Usage: cdls [OPTION]\n
+    Options:
+    \t-h, --help\t\t\tHelp message\n
+    Operations in cdls screen:
+    1. Use arrow button to navigate in directory
+    \tLeft arrow\t\t\tgo to parent directory
+    \tRight arrow\t\t\tgo to child directory
+    \tUp arrow\t\t\tgo to previous item
+    \tDown arrow\t\t\tgo to next item
+    2. Enter button\t\t\tExit cdls and jump to current directory");
+}
+
 fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() > 2 {
-        // toto!("print help")
+        print_help();
         exit(0);
     }
 
     let mut debug_mode = false;
     if args.len() == 2 {
         if args[1] == "--help" || args[1] == "-h" {
-            // toto!("print help")
+            print_help();            
             exit(0);
         }
         if args[1] == "--debug" {
