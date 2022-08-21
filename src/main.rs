@@ -5,6 +5,7 @@ extern crate log;
 
 use std::env;
 use std::fs;
+use std::os::unix::fs::FileTypeExt;
 //use std::io;
 use std::path::PathBuf;
 use simplelog::*;
@@ -13,18 +14,7 @@ use std::process::exit;
 use std::os::unix::process::CommandExt;
 use std::env::set_current_dir;
 
-/*
-struct GlobalCtrl {
-    cur_dir: PathBuf,
-    screen_dir: PathBuf,
-    screen_cursor: PathBuf
-}
-*/
-
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
-
-static COLOR_BACKGROUND: i16 = 16;
-static COLOR_FOREGROUND: i16 = 17;
 
 fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
     let mut children = Vec::new();
@@ -44,8 +34,27 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
     return children;
 }
 
-fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32) -> (Vec<PathBuf>, usize) {
+fn get_file_type(path: &PathBuf) -> &str {
+    let metadata = fs::metadata(path).unwrap();
+    // todo: error: handle errors. e.g. permission
+    let file_type = metadata.file_type();
+    if file_type.is_dir() {
+        return "DIR";
+    } else if file_type.is_file() {
+        return "FILE";
+    } else if file_type.is_symlink() {
+        return "SYMLINK";
+    } else if file_type.is_socket() || file_type.is_fifo() {
+        return "FD";
+    } else if file_type.is_block_device() || file_type.is_char_device() {
+        return "DEV";
+    } else {
+        return "UNKNOWN";
+    }
+}
 
+fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32) -> (Vec<PathBuf>, usize) {
+    // todo: display file mode：DIR FILE FD etc.
     ncurses::mv(0, 0);
 
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
@@ -74,10 +83,11 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
             ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
         } 
 
-        let mut displayed_ele = child.clone().file_name().expect("").to_str().unwrap().to_string();
-        displayed_ele.insert(0, '\t');
-        displayed_ele.push('\n');
-        ncurses::addstr(&displayed_ele);
+        let file_type = get_file_type(child);
+        let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
+        
+        let row_str = format!("\t{}\t{}\n", file_type, file_name);
+        ncurses::addstr(&row_str);
 
         if idx == cursor {
             ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
@@ -122,7 +132,7 @@ fn main() {
             print_help();            
             exit(0);
         }
-        if args[1] == "--debug" {
+        if args[1] == "--debug" || args[1] == "-d" {
             debug_mode = true;
         }
     }
@@ -147,13 +157,7 @@ fn main() {
             exit(1);
         }
     };
-/*
-    let mut g = GlobalCtrl{
-        cur_dir: cur_path.clone(), 
-        screen_dir: cur_path.clone(), 
-        screen_cursor: cur_path.clone()
-    };
-*/
+
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
@@ -161,9 +165,7 @@ fn main() {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
     ncurses::start_color();
-    ncurses::init_color(COLOR_BACKGROUND, 0x39 * 4, 0x3e * 4, 0x46 * 4);
-    ncurses::init_color(COLOR_FOREGROUND, 0xee * 4, 0xee * 4, 0xee * 4);
-    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, COLOR_BACKGROUND, COLOR_FOREGROUND);
+    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_WHITE);
 
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
@@ -227,7 +229,6 @@ fn main() {
     ncurses::echo();
     ncurses::keypad(ncurses::stdscr(), false);
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE);
-    /* Terminate ncurses. */
     ncurses::endwin();
 
     // todo kill parent bash process

@@ -1,6 +1,6 @@
 # CDLS
 
-CDLS: A cd+ls alternatives for linux system. Help promptly locate the file you want.
+CDLS: A cd+ls alternatives for linux system. Help promptly navigate in file system.
 
 # Usage
 
