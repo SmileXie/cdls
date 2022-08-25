@@ -6,6 +6,7 @@ extern crate log;
 use std::env;
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
+use std::os::unix::fs::PermissionsExt;
 //use std::io;
 use std::path::PathBuf;
 use simplelog::*;
@@ -53,8 +54,27 @@ fn get_file_type(path: &PathBuf) -> &str {
     }
 }
 
+fn get_file_permissions(path: &PathBuf) -> String {
+    let metadata = fs::metadata(path).unwrap();
+    let permissions = metadata.permissions();
+    let mode = permissions.mode();
+
+    let mut permission_str = String::from("rwxrwxrwx");
+
+    for i in 0..9 {
+        if mode & (1 << (8 - i)) == 0 {
+            permission_str.replace_range(i..i+1, "-");
+        }
+    }
+
+    return permission_str;
+}
+
 fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32) -> (Vec<PathBuf>, usize) {
-    // todo: display file mode：DIR FILE FD etc.
+    // toto: display file size
+    // todo: display file owner
+    // todo: display file permission
+    // toto: screen height limit, if too small, prompt. 
     ncurses::mv(0, 0);
 
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
@@ -74,7 +94,7 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
             idx += 1;
             continue;
         }
-        if idx - start_idx >= (maxy - 2) as usize {
+        if idx - start_idx == (maxy - 3) as usize {
             ncurses::addstr("\t...\n");
             break;
         }
@@ -85,8 +105,9 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
         let file_type = get_file_type(child);
         let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
+        let permissions = get_file_permissions(child);
         
-        let row_str = format!("\t{}\t{}\n", file_type, file_name);
+        let row_str = format!("\t{}\t\t{}\t{}\n", file_type, permissions, file_name);
         ncurses::addstr(&row_str);
 
         if idx == cursor {
@@ -98,8 +119,11 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
     ncurses::clrtobot();
 
-        //ncurses::mvaddstr(maxy, 0, "BOTTOM LINE PROMPT");
-    
+    let help_string = "Arrow Keys: Select item; Enter: Quit cdls and jump to selected item";
+    ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    ncurses::mvaddstr(maxy - 1, 0, help_string);
+    ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+
     ncurses::refresh();
 
     return (dir_children, start_idx);
@@ -119,7 +143,7 @@ fn print_help() {
 }
 
 fn main() {
-
+    // todo, toggle permission and type display
     let args: Vec<String> = env::args().collect();
     if args.len() > 2 {
         print_help();
