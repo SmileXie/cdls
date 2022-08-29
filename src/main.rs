@@ -16,6 +16,19 @@ use std::os::unix::process::CommandExt;
 use std::env::set_current_dir;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
+static HELP_STR: &str = "Usage: cdls [OPTION]\n
+Options:
+\t-h, --help\t\t\tHelp message\n
+Operations in cdls screen:
+1. Use arrow button to navigate in directory
+\tLeft arrow\t\tgo to parent directory
+\tRight arrow\t\tgo to child directory
+\tUp arrow\t\tgo to previous item
+\tDown arrow\t\tgo to next item
+2. Enter button\t\t\tExit cdls and jump to current directory
+3. toggle column display:
+\tt\t\t\tItem type
+\tp\t\t\tPermission";
 
 struct ColumnDisplay {
     item_type: bool,
@@ -76,11 +89,19 @@ fn get_file_permissions(path: &PathBuf) -> String {
     return permission_str;
 }
 
+fn help_screen() {
+    ncurses::mv(0, 0);
+    ncurses::addstr(HELP_STR);
+
+    ncurses::clrtobot();
+    //todo bottom line help "Press any key to exit"
+    ncurses::refresh();
+}
+
 fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
         -> (Vec<PathBuf>, usize) {
     // toto: display file size
     // todo: display file owner
-    // todo: display file permission
     // toto: screen height limit, if too small, prompt. 
     ncurses::mv(0, 0);
 
@@ -136,9 +157,9 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
     ncurses::clrtobot();
 
-    let help_string = "Arrow Keys: Select item; Enter: Quit cdls and jump to selected item";
+    let bt_str = "Arrow Keys: Select item; Enter: Quit cdls and jump to selected item; h: More help";
     ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
-    ncurses::mvaddstr(maxy - 1, 0, help_string);
+    ncurses::mvaddstr(maxy - 1, 0, bt_str);
     ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
 
     ncurses::refresh();
@@ -147,16 +168,7 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 }
 
 fn print_help() {
-    println!("Usage: cdls [OPTION]\n
-    Options:
-    \t-h, --help\t\t\tHelp message\n
-    Operations in cdls screen:
-    1. Use arrow button to navigate in directory
-    \tLeft arrow\t\t\tgo to parent directory
-    \tRight arrow\t\t\tgo to child directory
-    \tUp arrow\t\t\tgo to previous item
-    \tDown arrow\t\t\tgo to next item
-    2. Enter button\t\t\tExit cdls and jump to current directory");
+    println!("{}", HELP_STR);
 }
 
 fn main() {
@@ -211,9 +223,15 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp: ColumnDisplay = ColumnDisplay {item_type: false, permission: false, size: false};
-
+    let mut col_disp = ColumnDisplay {item_type: false, permission: false, size: false};
+    let mut help_disp = false;
     loop {
+        if help_disp {
+            help_screen();
+            ncurses::getch(); /* press any key to exit help screen */
+            help_disp = false;
+            continue;
+        } 
         let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy, &col_disp);
         let ch = ncurses::getch();
         maxy = ncurses::getmaxy(ncurses::stdscr());
@@ -265,6 +283,9 @@ fn main() {
             },
             112 => { /* p */
                 col_disp.permission = !col_disp.permission;
+            },
+            104 => { /* h */
+                help_disp = true;
             },
             _ => {
                 // ncurses::mvaddstr(10, 0, &format!("press {}", ch));
