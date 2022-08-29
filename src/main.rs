@@ -17,6 +17,12 @@ use std::env::set_current_dir;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
 
+struct ColumnDisplay {
+    item_type: bool,
+    permission: bool,
+    size: bool,
+}
+
 fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
     let mut children = Vec::new();
 
@@ -70,7 +76,8 @@ fn get_file_permissions(path: &PathBuf) -> String {
     return permission_str;
 }
 
-fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32) -> (Vec<PathBuf>, usize) {
+fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
+        -> (Vec<PathBuf>, usize) {
     // toto: display file size
     // todo: display file owner
     // todo: display file permission
@@ -107,7 +114,17 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
         let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
         let permissions = get_file_permissions(child);
         
-        let row_str = format!("\t{}\t\t{}\t{}\n", file_type, permissions, file_name);
+        let mut row_str = String::from("\t");
+        if col_disp.item_type {
+            row_str.push_str(file_type);
+            row_str.push_str("\t");
+        }
+        if col_disp.permission {
+            row_str.push_str(&permissions);
+            row_str.push_str("\t");
+        }
+        row_str.push_str(&file_name);
+        row_str.push_str("\n");
         ncurses::addstr(&row_str);
 
         if idx == cursor {
@@ -194,9 +211,10 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
+    let mut col_disp: ColumnDisplay = ColumnDisplay {item_type: false, permission: false, size: false};
 
     loop {
-        let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy);
+        let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy, &col_disp);
         let ch = ncurses::getch();
         maxy = ncurses::getmaxy(ncurses::stdscr());
         match ch {
@@ -241,6 +259,12 @@ fn main() {
             113 => { /* q */
                 log::warn!("q pressed, exit");
                 break;
+            },
+            116 => { /* t */
+                col_disp.item_type = !col_disp.item_type;
+            },
+            112 => { /* p */
+                col_disp.permission = !col_disp.permission;
             },
             _ => {
                 // ncurses::mvaddstr(10, 0, &format!("press {}", ch));
