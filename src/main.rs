@@ -55,8 +55,18 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
 }
 
 fn get_file_type(path: &PathBuf) -> &str {
-    let metadata = fs::metadata(path).unwrap();
-    // todo: error: handle errors. e.g. permission
+
+    let metadata;
+
+    match fs::metadata(path) {
+        Ok(md) => {
+            metadata = md;
+        }
+        Err(_) => {
+            return "NO-PERMISSION"
+        }
+    }    
+
     let file_type = metadata.file_type();
     if file_type.is_dir() {
         return "DIR";
@@ -89,12 +99,16 @@ fn get_file_permissions(path: &PathBuf) -> String {
     return permission_str;
 }
 
-fn help_screen() {
+fn help_screen(maxy: i32) {
     ncurses::mv(0, 0);
     ncurses::addstr(HELP_STR);
 
     ncurses::clrtobot();
-    //todo bottom line help "Press any key to exit"
+
+    ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    ncurses::mvaddstr(maxy - 1, 0, "Press any key to continue");
+    ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    
     ncurses::refresh();
 }
 
@@ -227,7 +241,7 @@ fn main() {
     let mut help_disp = false;
     loop {
         if help_disp {
-            help_screen();
+            help_screen(maxy);
             ncurses::getch(); /* press any key to exit help screen */
             help_disp = false;
             continue;
