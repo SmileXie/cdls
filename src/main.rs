@@ -2,18 +2,19 @@
 extern crate ncurses;
 extern crate simplelog;
 extern crate log;
+extern crate fork;
 
 use std::env;
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::fs::PermissionsExt;
-//use std::io;
+use nix::sys::signal;
 use std::path::PathBuf;
 use simplelog::*;
-use std::process::Command;
-use std::process::exit;
+use std::process::{Command, exit};
 use std::os::unix::process::CommandExt;
 use std::env::set_current_dir;
+//use fork::{daemon, fork, Fork};
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
 static HELP_STR: &str = "Usage: cdls [OPTION]\n
@@ -186,7 +187,7 @@ fn print_help() {
 }
 
 fn main() {
-    // todo, toggle permission and type display
+    
     let args: Vec<String> = env::args().collect();
     if args.len() > 2 {
         print_help();
@@ -314,8 +315,10 @@ fn main() {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE);
     ncurses::endwin();
 
-    // todo kill parent bash process
+    // replace current process context with bash
     Command::new("bash").exec();
+    // todo: bug: bash recusively call bash
+    // fix: use "exec cdls" to start cdls
 
     exit(0);
 }
