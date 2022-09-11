@@ -2,13 +2,13 @@
 extern crate ncurses;
 extern crate simplelog;
 extern crate log;
-extern crate fork;
+// extern crate fork;
 
 use std::env;
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::fs::PermissionsExt;
-use nix::sys::signal;
+//use nix::sys::signal;
 use std::path::PathBuf;
 use simplelog::*;
 use std::process::{Command, exit};
@@ -34,7 +34,7 @@ Operations in cdls screen:
 struct ColumnDisplay {
     item_type: bool,
     permission: bool,
-    size: bool,
+    //size: bool,
 }
 
 fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
@@ -115,9 +115,9 @@ fn help_screen(maxy: i32) {
 
 fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
         -> (Vec<PathBuf>, usize) {
-    // toto: display file size
+    // todo: display file size
     // todo: display file owner
-    // toto: screen height limit, if too small, prompt. 
+    // todo: screen height limit, if too small, prompt. 
     ncurses::mv(0, 0);
 
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
@@ -238,7 +238,7 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp = ColumnDisplay {item_type: false, permission: false, size: false};
+    let mut col_disp = ColumnDisplay {item_type: false, permission: false};
     let mut help_disp = false;
     loop {
         if help_disp {
