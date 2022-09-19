@@ -29,12 +29,13 @@ Operations in cdls screen:
 2. Enter button\t\t\tExit cdls and jump to current directory
 3. toggle column display:
 \tt\t\t\tItem type
-\tp\t\t\tPermission";
+\tp\t\t\tPermission
+\ts\t\t\tSize";
 
 struct ColumnDisplay {
     item_type: bool,
     permission: bool,
-    //size: bool,
+    size: bool,
 }
 
 fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
@@ -84,20 +85,34 @@ fn get_file_type(path: &PathBuf) -> &str {
     }
 }
 
-fn get_file_permissions(path: &PathBuf) -> String {
-    let metadata = fs::metadata(path).unwrap();
+fn get_file_permissions_and_size(path: &PathBuf) -> (String, String) {
+
+    let metadata;
+
+    match fs::metadata(path) {
+        Ok(md) => {
+            metadata = md;
+        }
+        Err(_) => {
+            return (String::from("UNKNOWN"), String::from("UNKNOWN"));
+        }
+    }
+
     let permissions = metadata.permissions();
     let mode = permissions.mode();
+    let size = metadata.len();
 
     let mut permission_str = String::from("rwxrwxrwx");
-
+    
     for i in 0..9 {
         if mode & (1 << (8 - i)) == 0 {
             permission_str.replace_range(i..i+1, "-");
         }
     }
+    
+    let size_str = size.to_string(); 
 
-    return permission_str;
+    return (permission_str, size_str);
 }
 
 fn help_screen(maxy: i32) {
@@ -148,7 +163,7 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
         let file_type = get_file_type(child);
         let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
-        let permissions = get_file_permissions(child);
+        let (permissions, size) = get_file_permissions_and_size(child);
         
         let mut row_str = String::from("\t");
         if col_disp.item_type {
@@ -157,6 +172,10 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
         }
         if col_disp.permission {
             row_str.push_str(&permissions);
+            row_str.push_str("\t");
+        }
+        if col_disp.size {
+            row_str.push_str(&size);
             row_str.push_str("\t");
         }
         row_str.push_str(&file_name);
@@ -240,7 +259,7 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp = ColumnDisplay {item_type: false, permission: false};
+    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true};
     let mut help_disp = false;
     loop {
         if help_disp {
@@ -249,6 +268,7 @@ fn main() {
             help_disp = false;
             continue;
         } 
+        // todo: search mode, search file name
         let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy, &col_disp);
         let ch = ncurses::getch();
         maxy = ncurses::getmaxy(ncurses::stdscr());
@@ -294,6 +314,9 @@ fn main() {
             113 => { /* q */
                 log::warn!("q pressed, exit");
                 break;
+            },
+            115 => { /* s */
+                col_disp.size = !col_disp.size;
             },
             116 => { /* t */
                 col_disp.item_type = !col_disp.item_type;
