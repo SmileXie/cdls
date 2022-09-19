@@ -199,9 +199,11 @@ fn main() {
         if args[1] == "--help" || args[1] == "-h" {
             print_help();            
             exit(0);
-        }
-        if args[1] == "--debug" || args[1] == "-d" {
+        } else if args[1] == "--debug" || args[1] == "-d" {
             debug_mode = true;
+        } else {
+            print_help();
+            exit(0);
         }
     }
 
@@ -262,7 +264,7 @@ fn main() {
             ncurses::KEY_DOWN => {
                 if cursor < dir_children.len() - 1 {
                     cursor += 1;
-                    if cursor - start_idx >= (maxy - 2) as usize {
+                    if cursor - start_idx >= (maxy - 3) as usize {
                         start_idx += 1;
                     }
                 }
