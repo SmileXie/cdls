@@ -23,6 +23,7 @@ Operations in cdls screen:
 
         t                       Item type
         p                       Permission
+        s                       Size
 
 3. Exit cdls
 

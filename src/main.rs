@@ -110,6 +110,8 @@ fn get_file_permissions_and_size(path: &PathBuf) -> (String, String) {
         }
     }
     
+    // log::debug!("permission string len {}", permission_str.len());
+
     let size_str = size.to_string(); 
 
     return (permission_str, size_str);
@@ -133,6 +135,7 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
     // todo: display file size
     // todo: display file owner
     // todo: screen height limit, if too small, prompt. 
+    ncurses::clear();
     ncurses::mv(0, 0);
 
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
@@ -180,6 +183,20 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
         }
         row_str.push_str(&file_name);
         row_str.push_str("\n");
+
+        /*
+        let row_str:String;
+        if col_disp.item_type && col_disp.permission && col_disp.size {
+            row_str = format!("{:<8}{:<16}{:<8}{}\n", file_type, &permissions, &size, &file_name);
+        } else if col_disp.item_type && col_disp.permission {
+            row_str = format!("{:<8}{:<16}{}\n", file_type, &permissions, &file_name);
+        } else if col_disp.item_type && col_disp.size {
+            row_str = format!("{:<8}{:<8}{}\n", file_type, &size, &file_name);
+        } else /* if col_disp.permission && col_disp.size */ {
+            row_str = format!("{:<16}{:<8}{}\n", &permissions, &size, &file_name);
+        } 
+        */
+
         ncurses::addstr(&row_str);
 
         if idx == cursor {
