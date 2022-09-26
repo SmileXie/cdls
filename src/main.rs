@@ -130,9 +130,32 @@ fn help_screen(maxy: i32) {
     ncurses::refresh();
 }
 
+fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str, size: &str, file_name: &str) -> String {
+
+    let row_str:String;
+    if col_disp.item_type && col_disp.permission && col_disp.size {
+        row_str = format!("{:<8}{:<16}{:<16}{}\n", file_type, permissions, size, file_name);
+    } else if col_disp.item_type && col_disp.permission && !col_disp.size {
+        row_str = format!("{:<8}{:<16}{}\n", file_type, permissions, file_name);
+    } else if col_disp.item_type && !col_disp.permission && col_disp.size {
+        row_str = format!("{:<8}{:<16}{}\n", file_type, size, file_name);
+    } else if !col_disp.item_type && col_disp.permission && col_disp.size {
+        row_str = format!("{:<16}{:<16}{}\n", permissions, size, file_name);
+    } else if !col_disp.item_type && !col_disp.permission && col_disp.size {
+        row_str = format!("{:<16}{}\n", size, file_name);
+    } else if !col_disp.item_type && col_disp.permission && !col_disp.size {
+        row_str = format!("{:<16}{}\n", permissions, file_name);
+    } else if col_disp.item_type && !col_disp.permission && !col_disp.size {
+        row_str = format!("{:<8}{}\n", file_type, file_name);
+    } else {
+        row_str = format!("{}\n", file_name);
+    } 
+
+    return row_str;
+}
+
 fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
         -> (Vec<PathBuf>, usize) {
-    // todo: display file size
     // todo: display file owner
     // todo: screen height limit, if too small, prompt. 
     ncurses::clear();
@@ -162,45 +185,26 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
 
         if idx == cursor {
             ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+        // bug: in Xshell alignment doesn't work;
         } 
 
         let file_type = get_file_type(child);
         let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
         let (permissions, size) = get_file_permissions_and_size(child);
         
-        let mut row_str = String::from("\t");
-        if col_disp.item_type {
-            row_str.push_str(file_type);
-            row_str.push_str("\t");
-        }
-        if col_disp.permission {
-            row_str.push_str(&permissions);
-            row_str.push_str("\t");
-        }
-        if col_disp.size {
-            row_str.push_str(&size);
-            row_str.push_str("\t");
-        }
-        row_str.push_str(&file_name);
-        row_str.push_str("\n");
+        let mut row_str = get_item_row_str(col_disp, file_type, &permissions, &size, &file_name);
 
-        /*
-        let row_str:String;
-        if col_disp.item_type && col_disp.permission && col_disp.size {
-            row_str = format!("{:<8}{:<16}{:<8}{}\n", file_type, &permissions, &size, &file_name);
-        } else if col_disp.item_type && col_disp.permission {
-            row_str = format!("{:<8}{:<16}{}\n", file_type, &permissions, &file_name);
-        } else if col_disp.item_type && col_disp.size {
-            row_str = format!("{:<8}{:<8}{}\n", file_type, &size, &file_name);
-        } else /* if col_disp.permission && col_disp.size */ {
-            row_str = format!("{:<16}{:<8}{}\n", &permissions, &size, &file_name);
-        } 
-        */
+        if idx == cursor {
+            row_str.insert_str(0, ">>>>\t");
+        } else {
+            row_str.insert_str(0, "    \t");
+        }
 
         ncurses::addstr(&row_str);
 
         if idx == cursor {
             ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+        // bug: in Xshell alignment doesn't work;
         }
 
         idx += 1;
@@ -271,7 +275,7 @@ fn main() {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
     ncurses::start_color();
-    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_WHITE);
+    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_BLUE);
 
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
