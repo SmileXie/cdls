@@ -60,7 +60,7 @@ fn get_file_type(path: &PathBuf) -> &str {
 
     let metadata;
 
-    match fs::metadata(path) {
+    match fs::symlink_metadata(path) {
         Ok(md) => {
             metadata = md;
         }
@@ -72,14 +72,14 @@ fn get_file_type(path: &PathBuf) -> &str {
     let file_type = metadata.file_type();
     if file_type.is_dir() {
         return "DIR";
-    } else if file_type.is_file() {
-        return "FILE";
-    } else if file_type.is_symlink() {
+    }  else if file_type.is_symlink() {
         return "SYMLINK";
     } else if file_type.is_socket() || file_type.is_fifo() {
         return "FD";
     } else if file_type.is_block_device() || file_type.is_char_device() {
         return "DEV";
+    } else if file_type.is_file() {
+        return "FILE";
     } else {
         return "UNKNOWN";
     }
@@ -158,6 +158,7 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
         -> (Vec<PathBuf>, usize) {
     // todo: display file owner
     // todo: screen height limit, if too small, prompt. 
+
     ncurses::clear();
     ncurses::mv(0, 0);
 
@@ -188,8 +189,26 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
         // bug: in Xshell alignment doesn't work;
         } 
 
+        let file_path = child.as_path();
+
         let file_type = get_file_type(child);
-        let file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
+        let mut file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
+        
+        if file_type.eq("SYMLINK") {
+            let sym_link_to = match fs::read_link(file_path) {
+                Ok(link_to) => {
+                    match link_to.to_str() {
+                        Some(link_str) => String::from(link_str),
+                        _ => String::from("")
+                    }
+                },
+                Err(_) => String::from("")
+            };
+
+            file_name.push_str(" -> ");
+            file_name.push_str(&sym_link_to);
+        }
+
         let (permissions, size) = get_file_permissions_and_size(child);
         
         let mut row_str = get_item_row_str(col_disp, file_type, &permissions, &size, &file_name);
@@ -275,7 +294,7 @@ fn main() {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
     ncurses::start_color();
-    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_BLUE);
+    ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_WHITE);
 
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
