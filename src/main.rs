@@ -3,6 +3,7 @@ extern crate ncurses;
 extern crate simplelog;
 extern crate log;
 // extern crate fork;
+extern crate chrono;
 
 use std::env;
 use std::fs;
@@ -14,7 +15,9 @@ use simplelog::*;
 use std::process::{Command, exit};
 use std::os::unix::process::CommandExt;
 use std::env::set_current_dir;
-//use fork::{daemon, fork, Fork};
+
+use chrono::offset::Utc;
+use chrono::DateTime;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
 static HELP_STR: &str = "Usage: cdls [OPTION]\n
@@ -30,12 +33,14 @@ Operations in cdls screen:
 3. toggle column display:
 \tt\t\t\tItem type
 \tp\t\t\tPermission
-\ts\t\t\tSize";
+\ts\t\t\tSize
+\tm\t\t\tModified time";
 
 struct ColumnDisplay {
     item_type: bool,
     permission: bool,
     size: bool,
+    mtime: bool,
 }
 
 fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
@@ -85,7 +90,7 @@ fn get_file_type(path: &PathBuf) -> &str {
     }
 }
 
-fn get_file_permissions_and_size(path: &PathBuf) -> (String, String) {
+fn get_file_metadata_element(path: &PathBuf) -> (String, String, String) {
 
     let metadata;
 
@@ -94,7 +99,7 @@ fn get_file_permissions_and_size(path: &PathBuf) -> (String, String) {
             metadata = md;
         }
         Err(_) => {
-            return (String::from("UNKNOWN"), String::from("UNKNOWN"));
+            return (String::from("UNKNOWN"), String::from("UNKNOWN"), String::from("UNKNOWN"));
         }
     }
 
@@ -114,7 +119,15 @@ fn get_file_permissions_and_size(path: &PathBuf) -> (String, String) {
 
     let size_str = size.to_string(); 
 
-    return (permission_str, size_str);
+    let modified_time_str = match metadata.modified() {
+        Ok(time) => {
+            let datetime: DateTime<Utc> = time.into();
+            datetime.format("%Y-%m-%d %H:%M:%S").to_string()    
+        },
+        Err(_) => String::from("UNKNOWN")
+    };
+
+    return (permission_str, size_str, modified_time_str);
 }
 
 fn help_screen(maxy: i32) {
@@ -130,26 +143,29 @@ fn help_screen(maxy: i32) {
     ncurses::refresh();
 }
 
-fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str, size: &str, file_name: &str) -> String {
+fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str, size: &str, file_name: &str, mtime: &str) -> String {
 
-    let row_str:String;
-    if col_disp.item_type && col_disp.permission && col_disp.size {
-        row_str = format!("{:<8}{:<16}{:<16}{}\n", file_type, permissions, size, file_name);
-    } else if col_disp.item_type && col_disp.permission && !col_disp.size {
-        row_str = format!("{:<8}{:<16}{}\n", file_type, permissions, file_name);
-    } else if col_disp.item_type && !col_disp.permission && col_disp.size {
-        row_str = format!("{:<8}{:<16}{}\n", file_type, size, file_name);
-    } else if !col_disp.item_type && col_disp.permission && col_disp.size {
-        row_str = format!("{:<16}{:<16}{}\n", permissions, size, file_name);
-    } else if !col_disp.item_type && !col_disp.permission && col_disp.size {
-        row_str = format!("{:<16}{}\n", size, file_name);
-    } else if !col_disp.item_type && col_disp.permission && !col_disp.size {
-        row_str = format!("{:<16}{}\n", permissions, file_name);
-    } else if col_disp.item_type && !col_disp.permission && !col_disp.size {
-        row_str = format!("{:<8}{}\n", file_type, file_name);
+    let mut row_str:String;
+
+    if col_disp.item_type {
+        row_str = format!("{:<8}", file_type);
     } else {
-        row_str = format!("{}\n", file_name);
+        row_str = String::from("");
     } 
+
+    if col_disp.permission {
+        row_str = format!("{}{:<16}", row_str, permissions);
+    }
+
+    if col_disp.size {
+        row_str = format!("{}{:<16}", row_str, size);
+    }
+
+    if col_disp.mtime {
+        row_str = format!("{}{:<24}", row_str, mtime);
+    }
+
+    row_str = format!("{}{}\n", row_str, file_name);
 
     return row_str;
 }
@@ -209,9 +225,9 @@ fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: 
             file_name.push_str(&sym_link_to);
         }
 
-        let (permissions, size) = get_file_permissions_and_size(child);
+        let (permissions, size, mtime) = get_file_metadata_element(child);
         
-        let mut row_str = get_item_row_str(col_disp, file_type, &permissions, &size, &file_name);
+        let mut row_str = get_item_row_str(col_disp, file_type, &permissions, &size, &file_name, &mtime);
 
         if idx == cursor {
             row_str.insert_str(0, ">>>>\t");
@@ -299,7 +315,7 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true};
+    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true, mtime: true};
     let mut help_disp = false;
     loop {
         if help_disp {
@@ -309,6 +325,7 @@ fn main() {
             continue;
         } 
         // todo: search mode, search file name
+        // todo: order by size / modification time
         let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy, &col_disp);
         let ch = ncurses::getch();
         maxy = ncurses::getmaxy(ncurses::stdscr());
@@ -363,6 +380,9 @@ fn main() {
             },
             112 => { /* p */
                 col_disp.permission = !col_disp.permission;
+            },
+            109 => { /* m */
+                col_disp.mtime = !col_disp.mtime;
             },
             104 => { /* h */
                 help_disp = true;

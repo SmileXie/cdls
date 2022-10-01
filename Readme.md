@@ -24,6 +24,7 @@ Operations in cdls screen:
         t                       Item type
         p                       Permission
         s                       Size
+        m                       Modified time
 
 3. Exit cdls
 
