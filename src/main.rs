@@ -20,6 +20,7 @@ use chrono::offset::Utc;
 use chrono::DateTime;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
+static COLOR_PAIR_WIN: i16 = 2;
 static HELP_STR: &str = "Usage: cdls [OPTION]\n
 Options:
 \t-h, --help\t\t\tHelp message\n
@@ -30,11 +31,8 @@ Operations in cdls screen:
 \tUp arrow\t\tgo to previous item
 \tDown arrow\t\tgo to next item
 2. Enter button\t\t\tExit cdls and jump to current directory
-3. toggle column display:
-\tt\t\t\tItem type
-\tp\t\t\tPermission
-\ts\t\t\tSize
-\tm\t\t\tModified time";
+3. Configuration Screen:
+\tc\t\t\tColumn Display";
 
 struct ColumnDisplay {
     item_type: bool,
@@ -170,7 +168,7 @@ fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str
     return row_str;
 }
 
-fn update_dir_screen(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
+fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
         -> (Vec<PathBuf>, usize) {
     // todo: display file owner
     // todo: screen height limit, if too small, prompt. 
@@ -261,6 +259,111 @@ fn print_help() {
     println!("{}", HELP_STR);
 }
 
+fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize) {
+    ncurses::clear();
+    ncurses::mv(0, 0);
+
+    ncurses::addstr("Please Select Columns to Display\n");
+
+    if selected == 0 {
+        ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+    if col_disp.item_type {
+        ncurses::addstr("* Item Type\n");
+    } else {
+        ncurses::addstr("  Item Type\n");
+    }
+    if selected == 0 {
+        ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+
+    if selected == 1 {
+        ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+    if col_disp.permission {
+        ncurses::addstr("* Permission\n");
+    } else {
+        ncurses::addstr("  Permission\n");
+    }
+    if selected == 1 {
+        ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+
+    if selected == 2 {
+        ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+    if col_disp.size {
+        ncurses::addstr("* Size\n");
+    } else {
+        ncurses::addstr("  Size\n");
+    }
+    if selected == 2 {
+        ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+
+    if selected == 3 {
+        ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+    if col_disp.mtime {
+        ncurses::addstr("* Modification Time\n");
+    } else {
+        ncurses::addstr("  Modification Time\n");
+    }
+    if selected == 3 {
+        ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    }
+
+    let bt_str = "Space: Toggle Selection; Enter: Save and Quit";
+    ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    ncurses::mvaddstr(maxy - 1, 0, bt_str);
+    ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+
+    ncurses::refresh();
+}
+
+fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
+   
+    let mut selected: usize = 0;
+
+    column_cfg_screen_update(maxy, col_disp, selected);
+
+    loop {
+        let ch = ncurses::getch();
+        
+        match ch {
+            32 => { /* space */
+                match selected {
+                    0 => col_disp.item_type = !col_disp.item_type,
+                    1 => col_disp.permission = !col_disp.permission,
+                    2 => col_disp.size = !col_disp.size,
+                    3 => col_disp.mtime = !col_disp.mtime,
+                    _ => {}
+                }
+                column_cfg_screen_update(maxy, col_disp, selected);
+            },
+            10 | ncurses::KEY_ENTER => { // enter
+                return;
+            },
+            ncurses::KEY_UP => {
+                if selected > 0 {
+                    selected -= 1;
+                }
+                column_cfg_screen_update(maxy, col_disp, selected);
+            },
+            ncurses::KEY_DOWN => {
+                if selected < 3 {
+                    selected += 1;
+                }
+                column_cfg_screen_update(maxy, col_disp, selected);
+            },
+            _ => {
+                column_cfg_screen_update(maxy, col_disp, selected);
+            }
+        }
+    }
+
+}
+
 fn main() {
     
     let args: Vec<String> = env::args().collect();
@@ -306,17 +409,18 @@ fn main() {
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
-    /* Invisible cursor. */
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
     ncurses::start_color();
     ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_WHITE);
+    ncurses::init_pair(COLOR_PAIR_WIN, ncurses::COLOR_BLACK, ncurses::COLOR_CYAN);
 
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
     let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true, mtime: true};
     let mut help_disp = false;
+
     loop {
         if help_disp {
             help_screen(maxy);
@@ -324,9 +428,10 @@ fn main() {
             help_disp = false;
             continue;
         } 
+
         // todo: search mode, search file name
         // todo: order by size / modification time
-        let (dir_children, _) = update_dir_screen(&cur_path, cursor, start_idx, maxy, &col_disp);
+        let (dir_children, _) = main_screen_update(&cur_path, cursor, start_idx, maxy, &col_disp);
         let ch = ncurses::getch();
         maxy = ncurses::getmaxy(ncurses::stdscr());
         match ch {
@@ -372,18 +477,9 @@ fn main() {
                 log::warn!("q pressed, exit");
                 break;
             },
-            115 => { /* s */
-                col_disp.size = !col_disp.size;
-            },
-            116 => { /* t */
-                col_disp.item_type = !col_disp.item_type;
-            },
-            112 => { /* p */
-                col_disp.permission = !col_disp.permission;
-            },
-            109 => { /* m */
-                col_disp.mtime = !col_disp.mtime;
-            },
+            99 => { /* c */
+                column_cfg(maxy, &mut col_disp);
+            }
             104 => { /* h */
                 help_disp = true;
             },
