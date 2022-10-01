@@ -1,4 +1,3 @@
-
 extern crate ncurses;
 extern crate simplelog;
 extern crate log;
@@ -31,7 +30,7 @@ Operations in cdls screen:
 \tUp arrow\t\tgo to previous item
 \tDown arrow\t\tgo to next item
 2. Enter button\t\t\tExit cdls and jump to current directory
-3. Configuration Screen:
+3. Configuration Screen
 \tc\t\t\tColumn Display";
 
 struct ColumnDisplay {

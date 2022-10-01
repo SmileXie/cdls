@@ -19,12 +19,9 @@ Operations in cdls screen:
         Up arrow                go to previous item
         Down arrow              go to next item
 
-2. toggle column display:
+2. Configuration Screen
 
-        t                       Item type
-        p                       Permission
-        s                       Size
-        m                       Modified time
+        c                       Column Display
 
 3. Exit cdls
 
