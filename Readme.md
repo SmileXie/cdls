@@ -22,12 +22,15 @@ Operations in cdls screen:
 2. Configuration Screen
 
         c                       Column Display
+        s                       Sort by
 
 3. Exit cdls
 
         Enter button                 Exit cdls and jump to current directory
 
 # Dependencies
+
+Rust Crate:
 
 * ncurses
 * log

@@ -3,6 +3,8 @@ extern crate simplelog;
 extern crate log;
 // extern crate fork;
 extern crate chrono;
+extern crate strum;
+extern crate strum_macros;
 
 use std::env;
 use std::fs;
@@ -17,6 +19,9 @@ use std::env::set_current_dir;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use std::fmt;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
 static COLOR_PAIR_WIN: i16 = 2;
@@ -31,19 +36,77 @@ Operations in cdls screen:
 \tDown arrow\t\tgo to next item
 2. Enter button\t\t\tExit cdls and jump to current directory
 3. Configuration Screen
-\tc\t\t\tColumn Display";
+\tc\t\t\tColumn Display
+\ts\t\t\tSort by";
 
 struct ColumnDisplay {
     item_type: bool,
     permission: bool,
     size: bool,
     mtime: bool,
+    sortby: SortBy,
 }
 
-fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
+#[derive(Debug, EnumIter, PartialEq, Eq, PartialOrd, Copy, Clone)]
+enum SortBy {
+    Filename,
+    ItemType,
+    Size,
+    MTime,
+}
+
+impl fmt::Display for SortBy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SortBy::Filename => write!(f, "File Name"),
+            SortBy::ItemType => write!(f, "Item Type"),
+            SortBy::Size => write!(f, "Size"),
+            SortBy::MTime => write!(f, "Modification Time"),
+        }
+    }
+}
+
+impl SortBy {
+    fn to_usize(&self) -> usize {
+        match self {
+            SortBy::Filename => 0,
+            SortBy::ItemType => 1,
+            SortBy::Size => 2,
+            SortBy::MTime => 3,
+        }
+    }
+}
+
+trait PathBufExt {
+    fn file_size(&self) -> u64;
+}
+
+impl PathBufExt for PathBuf {
+    fn file_size(&self) -> u64 {
+        match fs::symlink_metadata(self) {
+            Ok(md) => {
+                return md.len();
+            }
+            Err(_) => {
+                return 0;
+            }
+        }
+    }
+}
+
+fn get_current_dir_element(cur_path: &PathBuf, col_disp: &ColumnDisplay) -> Vec<PathBuf> {
     let mut children = Vec::new();
 
-    for f in fs::read_dir(cur_path).unwrap() {
+    let read_dir_iter = fs::read_dir(cur_path);
+    match read_dir_iter {
+        Ok(_) => {},
+        Err(e) => {
+            log::warn!("read_dir_iter error: {}", e);
+            return children;
+        }
+    }
+
+    for f in read_dir_iter.unwrap() {
         match f {
             Ok(file) => {
                 children.push(file.path());
@@ -53,6 +116,12 @@ fn get_current_dir_element(cur_path: &PathBuf) -> Vec<PathBuf> {
                 continue;
             }
         }
+    }
+
+    match col_disp.sortby {
+        SortBy::Filename => children.sort_by(|a, b| a.cmp(&b)),
+        SortBy::Size => children.sort_by(|a, b| a.file_size().cmp(&b.file_size())),
+        _ => {}, 
     }
 
     return children;
@@ -91,7 +160,7 @@ fn get_file_metadata_element(path: &PathBuf) -> (String, String, String) {
 
     let metadata;
 
-    match fs::metadata(path) {
+    match fs::symlink_metadata(path) {
         Ok(md) => {
             metadata = md;
         }
@@ -178,7 +247,7 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
     ncurses::addstr(&bar_str);
 
-    let dir_children = get_current_dir_element(basepath);
+    let dir_children = get_current_dir_element(basepath, col_disp);
 
     let mut idx = 0;
     for child in &dir_children {
@@ -363,6 +432,70 @@ fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
 
 }
 
+fn sort_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: &SortBy) {
+    ncurses::clear();
+    ncurses::mv(0, 0);
+
+    ncurses::addstr("Sort tht items by:\n");
+    
+    for sortby in SortBy::iter() {
+        if selected.to_usize() == sortby.to_usize() {
+            ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+        }
+        if col_disp.sortby == sortby {
+            ncurses::addstr(&format!("* {}\n", sortby.to_string()));
+        } else {
+            ncurses::addstr(&format!("  {}\n", sortby.to_string()));
+        }
+        if selected.to_usize() == sortby.to_usize() {
+            ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+        }
+    }
+
+    let bt_str = "Space: Toggle Selection; Enter: Save and Quit";
+    ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+    ncurses::mvaddstr(maxy - 1, 0, bt_str);
+    ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
+
+    ncurses::refresh();
+}
+
+fn sort_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
+       
+    let mut selected: SortBy = SortBy::iter().nth(col_disp.sortby.to_usize()).unwrap();
+
+    sort_cfg_screen_update(maxy, col_disp, &selected);
+
+    loop {
+        let ch = ncurses::getch();
+        
+        match ch {
+            32 => { /* space */
+                col_disp.sortby = selected;
+                sort_cfg_screen_update(maxy, col_disp, &selected);
+            },
+            10 | ncurses::KEY_ENTER => { // enter
+                return;
+            },
+            ncurses::KEY_UP => {
+                if selected > SortBy::Filename {
+                    selected = SortBy::iter().nth(selected.to_usize() - 1).unwrap();
+                }
+                sort_cfg_screen_update(maxy, col_disp, &selected);
+            },
+            ncurses::KEY_DOWN => {
+                if selected < SortBy::MTime {
+                    selected = SortBy::iter().nth(selected.to_usize() + 1).unwrap();
+                }
+                sort_cfg_screen_update(maxy, col_disp, &selected);
+            },
+            _ => {
+                sort_cfg_screen_update(maxy, col_disp, &selected);
+            }
+        }
+    }
+}
+
 fn main() {
     
     let args: Vec<String> = env::args().collect();
@@ -417,17 +550,9 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true, mtime: true};
-    let mut help_disp = false;
+    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true, mtime: true, sortby: SortBy::Filename};
 
     loop {
-        if help_disp {
-            help_screen(maxy);
-            ncurses::getch(); /* press any key to exit help screen */
-            help_disp = false;
-            continue;
-        } 
-
         // todo: search mode, search file name
         // todo: order by size / modification time
         let (dir_children, _) = main_screen_update(&cur_path, cursor, start_idx, maxy, &col_disp);
@@ -468,8 +593,7 @@ fn main() {
                 if !child.is_dir() {
                     child.pop();
                 }
-                set_current_dir(&child).unwrap();
-
+                set_current_dir(&child).unwrap(); // todo: handle error
                 break;
             },
             113 => { /* q */
@@ -480,14 +604,16 @@ fn main() {
                 column_cfg(maxy, &mut col_disp);
             }
             104 => { /* h */
-                help_disp = true;
+                help_screen(maxy);
+                ncurses::getch(); /* press any key to exit help screen */
+            },
+            115 => { /* s */
+                sort_cfg(maxy, &mut col_disp);
             },
             _ => {
-                // ncurses::mvaddstr(10, 0, &format!("press {}", ch));
                 log::debug!("press {}", ch);
             }
         }
-    
     }
 
     ncurses::echo();
