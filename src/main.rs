@@ -1,7 +1,6 @@
 extern crate ncurses;
 extern crate simplelog;
 extern crate log;
-// extern crate fork;
 extern crate chrono;
 extern crate strum;
 extern crate strum_macros;
@@ -17,8 +16,8 @@ use std::process::{Command, exit};
 use std::os::unix::process::CommandExt;
 use std::env::set_current_dir;
 
-use chrono::offset::Utc;
-use chrono::DateTime;
+use chrono::offset::{Utc, Local};
+use chrono::{DateTime, NaiveDateTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use std::fmt;
@@ -79,6 +78,8 @@ impl SortBy {
 
 trait PathBufExt {
     fn file_size(&self) -> u64;
+    fn file_modified_time(&self) -> DateTime<Utc>;
+    fn file_type(&self) -> &str;
 }
 
 impl PathBufExt for PathBuf {
@@ -90,6 +91,52 @@ impl PathBufExt for PathBuf {
             Err(_) => {
                 return 0;
             }
+        }
+    }
+
+    fn file_modified_time(&self) -> DateTime<Utc> {
+        match fs::symlink_metadata(self) {
+            Ok(md) => {
+                match md.modified() {
+                    Ok(time) => {
+                        return time.into();
+                    }
+                    Err(_) => {
+                        return DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+                    }
+                }
+            }
+            Err(_) => {
+                return DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+            }
+        }
+    }
+
+    fn file_type(&self) -> &str {
+        let metadata;
+
+        match fs::symlink_metadata(self) {
+            Ok(md) => {
+                metadata = md;
+            }
+            Err(_) => {
+                return "NO-PERMISSION"
+            }
+        }    
+    
+        let file_type = metadata.file_type();
+        if file_type.is_dir() {
+            return "DIR";
+        }  else if file_type.is_symlink() {
+            return "SYMLINK";
+        } else if file_type.is_socket() || file_type.is_fifo() {
+            return "FD";
+        } else if file_type.is_block_device() || file_type.is_char_device() {
+            return "DEV";
+        } else if file_type.is_file() {
+            return "FILE";
+        } else {
+            return "UNKNOWN";
         }
     }
 }
@@ -121,39 +168,12 @@ fn get_current_dir_element(cur_path: &PathBuf, col_disp: &ColumnDisplay) -> Vec<
     match col_disp.sortby {
         SortBy::Filename => children.sort_by(|a, b| a.cmp(&b)),
         SortBy::Size => children.sort_by(|a, b| a.file_size().cmp(&b.file_size())),
+        SortBy::MTime => children.sort_by(|a, b| a.file_modified_time().cmp(&b.file_modified_time())),
+        SortBy::ItemType => children.sort_by(|a, b| a.file_type().cmp(&b.file_type())),
         _ => {}, 
     }
 
     return children;
-}
-
-fn get_file_type(path: &PathBuf) -> &str {
-
-    let metadata;
-
-    match fs::symlink_metadata(path) {
-        Ok(md) => {
-            metadata = md;
-        }
-        Err(_) => {
-            return "NO-PERMISSION"
-        }
-    }    
-
-    let file_type = metadata.file_type();
-    if file_type.is_dir() {
-        return "DIR";
-    }  else if file_type.is_symlink() {
-        return "SYMLINK";
-    } else if file_type.is_socket() || file_type.is_fifo() {
-        return "FD";
-    } else if file_type.is_block_device() || file_type.is_char_device() {
-        return "DEV";
-    } else if file_type.is_file() {
-        return "FILE";
-    } else {
-        return "UNKNOWN";
-    }
 }
 
 fn get_file_metadata_element(path: &PathBuf) -> (String, String, String) {
@@ -181,13 +201,11 @@ fn get_file_metadata_element(path: &PathBuf) -> (String, String, String) {
         }
     }
     
-    // log::debug!("permission string len {}", permission_str.len());
-
     let size_str = size.to_string(); 
 
     let modified_time_str = match metadata.modified() {
         Ok(time) => {
-            let datetime: DateTime<Utc> = time.into();
+            let datetime: DateTime<Local> = time.into();
             datetime.format("%Y-%m-%d %H:%M:%S").to_string()    
         },
         Err(_) => String::from("UNKNOWN")
@@ -273,7 +291,7 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
 
         let file_path = child.as_path();
 
-        let file_type = get_file_type(child);
+        let file_type = child.file_type();
         let mut file_name = child.clone().file_name().expect("").to_str().unwrap().to_string();
         
         if file_type.eq("SYMLINK") {

@@ -24,13 +24,18 @@ Operations in cdls screen:
         c                       Column Display
         s                       Sort by
 
+        In configuration screen, use arrow button to navigate in configuration, use space to select, and use enter to confirm.
+
 3. Exit cdls
 
         Enter button                 Exit cdls and jump to current directory
 
-# Dependencies
+# Bugs
 
-Rust Crate:
+## Leaked Bashs
 
-* ncurses
-* log
+Once a cdls exited, its context is replaced by a new bash navigating to the targeting directory. The new bash usually inherited from a parent bash.
+
+You can use `exit` to exit the new bash and return to the parent one.
+
+I still have no idea how to fix this. I will appreciate it if you can help me.
