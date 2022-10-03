@@ -14,11 +14,15 @@ sudo chmod +x /usr/bin/cdls
 
 # Usage
 
-Usage: cdls [OPTION]
+Usage: 
 
-Options:
+```
+# launch cdls screen
+cdls
 
-        -h, --help                      Help message
+# display cdls help message
+cdls -h
+```
 
 Operations in cdls screen:
 
@@ -29,10 +33,10 @@ Operations in cdls screen:
         Up arrow                go to previous item
         Down arrow              go to next item
 
-2. Configuration Screen
+2. Start Configuration Screen
 
         c                       Column Display
-        s                       Sort by
+        s                       Sort
 
         In configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.
 
