@@ -2,6 +2,16 @@
 
 CDLS: A cd+ls alternatives for linux system. Help promptly navigate in file system.
 
+# Install
+
+In x86-64 architecture,
+
+```
+wget https://xs-upload.oss-cn-hangzhou.aliyuncs.com/cdls/release/v0.2/cdls
+sudo mv cdls /usr/bin/
+sudo chmod +x /usr/bin/cdls
+```
+
 # Usage
 
 Usage: cdls [OPTION]
@@ -24,11 +34,18 @@ Operations in cdls screen:
         c                       Column Display
         s                       Sort by
 
-        In configuration screen, use arrow button to navigate in configuration, use space to select, and use enter to confirm.
+        In configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.
 
 3. Exit cdls
 
         Enter button                 Exit cdls and jump to current directory
+
+# Dependencies
+
+* libncurses5
+
+        Install in ubuntu: sudo apt-get install libncurses5-dev
+
 
 # Bugs
 
@@ -38,4 +55,4 @@ Once a cdls exited, its context is replaced by a new bash navigating to the targ
 
 You can use `exit` to exit the new bash and return to the parent one.
 
-I still have no idea how to fix this. I will appreciate it if you can help me.
+I still have no idea how to fix this. I will appreciate if anyone could help.

@@ -36,7 +36,8 @@ Operations in cdls screen:
 2. Enter button\t\t\tExit cdls and jump to current directory
 3. Configuration Screen
 \tc\t\t\tColumn Display
-\ts\t\t\tSort by";
+\ts\t\t\tSort by
+\tIn configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.";
 
 struct ColumnDisplay {
     item_type: bool,
@@ -399,7 +400,7 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
         ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     }
 
-    let bt_str = "Space: Toggle Selection; Enter: Save and Quit";
+    let bt_str = "Space: Toggle Selection; q: Save and Quit";
     ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     ncurses::mvaddstr(maxy - 1, 0, bt_str);
     ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
@@ -427,7 +428,7 @@ fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
                 }
                 column_cfg_screen_update(maxy, col_disp, selected);
             },
-            10 | ncurses::KEY_ENTER => { // enter
+            113 => { // q
                 return;
             },
             ncurses::KEY_UP => {
@@ -470,7 +471,7 @@ fn sort_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: &SortBy
         }
     }
 
-    let bt_str = "Space: Toggle Selection; Enter: Save and Quit";
+    let bt_str = "Space: Toggle Selection; q: Save and Quit";
     ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     ncurses::mvaddstr(maxy - 1, 0, bt_str);
     ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
@@ -492,7 +493,7 @@ fn sort_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
                 col_disp.sortby = selected;
                 sort_cfg_screen_update(maxy, col_disp, &selected);
             },
-            10 | ncurses::KEY_ENTER => { // enter
+            113 => { // q
                 return;
             },
             ncurses::KEY_UP => {
