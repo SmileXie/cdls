@@ -21,6 +21,8 @@ use chrono::{DateTime, NaiveDateTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use std::fmt;
+use rust_fuzzy_search::fuzzy_compare;
+use encoding8::ascii::is_printable;
 
 static COLOR_PAIR_HIGHLIGHT: i16 = 1;
 static COLOR_PAIR_WIN: i16 = 2;
@@ -39,12 +41,14 @@ Operations in cdls screen:
 \ts\t\t\tSort by
 \tIn configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.";
 
-struct ColumnDisplay {
+struct CdlsConfig {
     item_type: bool,
     permission: bool,
     size: bool,
     mtime: bool,
     sortby: SortBy,
+    search_mode: bool,
+    search_string: String,
 }
 
 #[derive(Debug, EnumIter, PartialEq, Eq, PartialOrd, Copy, Clone)]
@@ -81,6 +85,7 @@ trait PathBufExt {
     fn file_size(&self) -> u64;
     fn file_modified_time(&self) -> DateTime<Utc>;
     fn file_type(&self) -> &str;
+    fn fuzzy_search_score(&self, search_str: &str) -> f32;
 }
 
 impl PathBufExt for PathBuf {
@@ -140,9 +145,65 @@ impl PathBufExt for PathBuf {
             return "UNKNOWN";
         }
     }
+
+    fn fuzzy_search_score(&self, search_str: &str) -> f32 {
+        let file_name = match self.file_name() {
+            Some(name) => {
+                match name.to_str() {
+                    Some(name_str) => {
+                        name_str
+                    },
+                    None => {
+                        ""
+                    }
+                }
+            },
+            None => {
+                ""
+            }
+        };
+        return fuzzy_compare(search_str, file_name);
+    }
 }
 
-fn get_current_dir_element(cur_path: &PathBuf, col_disp: &ColumnDisplay) -> Vec<PathBuf> {
+
+trait I32Ext {
+    fn within_u8_range(&self) -> bool;
+    fn to_char(&self) -> char;
+    fn to_u8(&self) -> u8;
+}
+
+impl I32Ext for i32 {
+    fn within_u8_range(&self) -> bool {
+        return *self >= 0 && *self <= 255;
+    }
+    fn to_char(&self) -> char {
+        let tmp: u8;
+        if self < &0 {
+            tmp = 0;
+        } else if self > &255 {
+            tmp = 255;
+        } else {
+            tmp = *self as u8;
+        }
+
+        return tmp as char;
+    }
+    fn to_u8(&self) -> u8 {
+        let tmp: u8;
+        if self < &0 {
+            tmp = 0;
+        } else if self > &255 {
+            tmp = 255;
+        } else {
+            tmp = *self as u8;
+        }
+
+        return tmp;
+    }
+}
+
+fn get_current_dir_element(cur_path: &PathBuf, cdls_cfg: &CdlsConfig) -> Vec<PathBuf> {
     let mut children = Vec::new();
 
     let read_dir_iter = fs::read_dir(cur_path);
@@ -166,12 +227,20 @@ fn get_current_dir_element(cur_path: &PathBuf, col_disp: &ColumnDisplay) -> Vec<
         }
     }
 
-    match col_disp.sortby {
-        SortBy::Filename => children.sort_by(|a, b| a.cmp(&b)),
-        SortBy::Size => children.sort_by(|a, b| a.file_size().cmp(&b.file_size())),
-        SortBy::MTime => children.sort_by(|a, b| a.file_modified_time().cmp(&b.file_modified_time())),
-        SortBy::ItemType => children.sort_by(|a, b| a.file_type().cmp(&b.file_type())),
-        _ => {}, 
+    if cdls_cfg.search_mode {
+        children.sort_by(
+            |a, b| 
+            b.fuzzy_search_score(&cdls_cfg.search_string)
+            .total_cmp(&a.fuzzy_search_score(&cdls_cfg.search_string))
+        )
+    } else {
+    match cdls_cfg.sortby {
+            SortBy::Filename => children.sort_by(|a, b| a.cmp(&b)),
+            SortBy::Size => children.sort_by(|a, b| a.file_size().cmp(&b.file_size())),
+            SortBy::MTime => children.sort_by(|a, b| a.file_modified_time().cmp(&b.file_modified_time())),
+            SortBy::ItemType => children.sort_by(|a, b| a.file_type().cmp(&b.file_type())),
+            _ => {}, 
+        }
     }
 
     return children;
@@ -228,25 +297,25 @@ fn help_screen(maxy: i32) {
     ncurses::refresh();
 }
 
-fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str, size: &str, file_name: &str, mtime: &str) -> String {
+fn get_item_row_str(cdls_cfg: &CdlsConfig, file_type: &str, permissions: &str, size: &str, file_name: &str, mtime: &str) -> String {
 
     let mut row_str:String;
 
-    if col_disp.item_type {
+    if cdls_cfg.item_type {
         row_str = format!("{:<8}", file_type);
     } else {
         row_str = String::from("");
     } 
 
-    if col_disp.permission {
+    if cdls_cfg.permission {
         row_str = format!("{}{:<16}", row_str, permissions);
     }
 
-    if col_disp.size {
+    if cdls_cfg.size {
         row_str = format!("{}{:<16}", row_str, size);
     }
 
-    if col_disp.mtime {
+    if cdls_cfg.mtime {
         row_str = format!("{}{:<24}", row_str, mtime);
     }
 
@@ -255,7 +324,7 @@ fn get_item_row_str(col_disp: &ColumnDisplay, file_type: &str, permissions: &str
     return row_str;
 }
 
-fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, col_disp: &ColumnDisplay) 
+fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, cdls_cfg: &CdlsConfig) 
         -> (Vec<PathBuf>, usize) {
     // todo: display file owner
     // todo: screen height limit, if too small, prompt. 
@@ -266,7 +335,7 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
     let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
     ncurses::addstr(&bar_str);
 
-    let dir_children = get_current_dir_element(basepath, col_disp);
+    let dir_children = get_current_dir_element(basepath, cdls_cfg);
 
     let mut idx = 0;
     for child in &dir_children {
@@ -312,7 +381,7 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
 
         let (permissions, size, mtime) = get_file_metadata_element(child);
         
-        let mut row_str = get_item_row_str(col_disp, file_type, &permissions, &size, &file_name, &mtime);
+        let mut row_str = get_item_row_str(cdls_cfg, file_type, &permissions, &size, &file_name, &mtime);
 
         if idx == cursor {
             row_str.insert_str(0, ">>>>\t");
@@ -330,11 +399,17 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
         idx += 1;
     } 
 
-    ncurses::clrtobot();
+    // ncurses::clrtobot();
 
-    let bt_str = "Arrow Keys: Select item; Enter: Quit cdls and jump to selected item; h: More help";
+    let bt_str: String;
+    if cdls_cfg.search_mode {
+        bt_str = format!("Search string:{} \tEnter: Exit search mode", cdls_cfg.search_string);
+    } else {
+        bt_str = String::from("Arrow Keys: Select item; Enter: Quit cdls and jump to selected item; h: More help");
+    };
+    
     ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
-    ncurses::mvaddstr(maxy - 1, 0, bt_str);
+    ncurses::mvaddstr(maxy - 1, 0, &bt_str);
     ncurses::attroff(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
 
     ncurses::refresh();
@@ -346,7 +421,7 @@ fn print_help() {
     println!("{}", HELP_STR);
 }
 
-fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize) {
+fn column_cfg_screen_update(maxy: i32, cdls_cfg: &CdlsConfig, selected: usize) {
     ncurses::clear();
     ncurses::mv(0, 0);
 
@@ -355,7 +430,7 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
     if selected == 0 {
         ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     }
-    if col_disp.item_type {
+    if cdls_cfg.item_type {
         ncurses::addstr("* Item Type\n");
     } else {
         ncurses::addstr("  Item Type\n");
@@ -367,7 +442,7 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
     if selected == 1 {
         ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     }
-    if col_disp.permission {
+    if cdls_cfg.permission {
         ncurses::addstr("* Permission\n");
     } else {
         ncurses::addstr("  Permission\n");
@@ -379,7 +454,7 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
     if selected == 2 {
         ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     }
-    if col_disp.size {
+    if cdls_cfg.size {
         ncurses::addstr("* Size\n");
     } else {
         ncurses::addstr("  Size\n");
@@ -391,7 +466,7 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
     if selected == 3 {
         ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
     }
-    if col_disp.mtime {
+    if cdls_cfg.mtime {
         ncurses::addstr("* Modification Time\n");
     } else {
         ncurses::addstr("  Modification Time\n");
@@ -408,11 +483,11 @@ fn column_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: usize
     ncurses::refresh();
 }
 
-fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
+fn column_cfg(maxy: i32, cdls_cfg: &mut CdlsConfig) {
    
     let mut selected: usize = 0;
 
-    column_cfg_screen_update(maxy, col_disp, selected);
+    column_cfg_screen_update(maxy, cdls_cfg, selected);
 
     loop {
         let ch = ncurses::getch();
@@ -420,13 +495,13 @@ fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
         match ch {
             32 => { /* space */
                 match selected {
-                    0 => col_disp.item_type = !col_disp.item_type,
-                    1 => col_disp.permission = !col_disp.permission,
-                    2 => col_disp.size = !col_disp.size,
-                    3 => col_disp.mtime = !col_disp.mtime,
+                    0 => cdls_cfg.item_type = !cdls_cfg.item_type,
+                    1 => cdls_cfg.permission = !cdls_cfg.permission,
+                    2 => cdls_cfg.size = !cdls_cfg.size,
+                    3 => cdls_cfg.mtime = !cdls_cfg.mtime,
                     _ => {}
                 }
-                column_cfg_screen_update(maxy, col_disp, selected);
+                column_cfg_screen_update(maxy, cdls_cfg, selected);
             },
             113 => { // q
                 return;
@@ -435,23 +510,23 @@ fn column_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
                 if selected > 0 {
                     selected -= 1;
                 }
-                column_cfg_screen_update(maxy, col_disp, selected);
+                column_cfg_screen_update(maxy, cdls_cfg, selected);
             },
             ncurses::KEY_DOWN => {
                 if selected < 3 {
                     selected += 1;
                 }
-                column_cfg_screen_update(maxy, col_disp, selected);
+                column_cfg_screen_update(maxy, cdls_cfg, selected);
             },
             _ => {
-                column_cfg_screen_update(maxy, col_disp, selected);
+                column_cfg_screen_update(maxy, cdls_cfg, selected);
             }
         }
     }
 
 }
 
-fn sort_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: &SortBy) {
+fn sort_cfg_screen_update(maxy: i32, cdls_cfg: &CdlsConfig, selected: &SortBy) {
     ncurses::clear();
     ncurses::mv(0, 0);
 
@@ -461,7 +536,7 @@ fn sort_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: &SortBy
         if selected.to_usize() == sortby.to_usize() {
             ncurses::attron(ncurses::COLOR_PAIR(COLOR_PAIR_HIGHLIGHT));
         }
-        if col_disp.sortby == sortby {
+        if cdls_cfg.sortby == sortby {
             ncurses::addstr(&format!("* {}\n", sortby.to_string()));
         } else {
             ncurses::addstr(&format!("  {}\n", sortby.to_string()));
@@ -479,19 +554,19 @@ fn sort_cfg_screen_update(maxy: i32, col_disp: &ColumnDisplay, selected: &SortBy
     ncurses::refresh();
 }
 
-fn sort_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
+fn sort_cfg(maxy: i32, cdls_cfg: &mut CdlsConfig) {
        
-    let mut selected: SortBy = SortBy::iter().nth(col_disp.sortby.to_usize()).unwrap();
+    let mut selected: SortBy = SortBy::iter().nth(cdls_cfg.sortby.to_usize()).unwrap();
 
-    sort_cfg_screen_update(maxy, col_disp, &selected);
+    sort_cfg_screen_update(maxy, cdls_cfg, &selected);
 
     loop {
         let ch = ncurses::getch();
         
         match ch {
             32 => { /* space */
-                col_disp.sortby = selected;
-                sort_cfg_screen_update(maxy, col_disp, &selected);
+                cdls_cfg.sortby = selected;
+                sort_cfg_screen_update(maxy, cdls_cfg, &selected);
             },
             113 => { // q
                 return;
@@ -500,16 +575,16 @@ fn sort_cfg(maxy: i32, col_disp: &mut ColumnDisplay) {
                 if selected > SortBy::Filename {
                     selected = SortBy::iter().nth(selected.to_usize() - 1).unwrap();
                 }
-                sort_cfg_screen_update(maxy, col_disp, &selected);
+                sort_cfg_screen_update(maxy, cdls_cfg, &selected);
             },
             ncurses::KEY_DOWN => {
                 if selected < SortBy::MTime {
                     selected = SortBy::iter().nth(selected.to_usize() + 1).unwrap();
                 }
-                sort_cfg_screen_update(maxy, col_disp, &selected);
+                sort_cfg_screen_update(maxy, cdls_cfg, &selected);
             },
             _ => {
-                sort_cfg_screen_update(maxy, col_disp, &selected);
+                sort_cfg_screen_update(maxy, cdls_cfg, &selected);
             }
         }
     }
@@ -569,14 +644,34 @@ fn main() {
     let mut cursor: usize = 0;
     let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
-    let mut col_disp = ColumnDisplay {item_type: true, permission: true, size: true, mtime: true, sortby: SortBy::Filename};
+    let mut cdls_cfg = CdlsConfig {
+        item_type: true, 
+        permission: true, 
+        size: true, 
+        mtime: true, 
+        sortby: SortBy::Filename,
+        search_mode: false,
+        search_string: String::new(),
+    };
 
     loop {
-        // todo: search mode, search file name
-        // todo: order by size / modification time
-        let (dir_children, _) = main_screen_update(&cur_path, cursor, start_idx, maxy, &col_disp);
-        let ch = ncurses::getch();
+        let (dir_children, _) = main_screen_update(&cur_path, cursor, start_idx, maxy, &cdls_cfg);
         maxy = ncurses::getmaxy(ncurses::stdscr());
+        let ch = ncurses::getch();
+        log::debug!("press {}", ch);
+        if cdls_cfg.search_mode 
+                && ( ch.within_u8_range() && is_printable(ch.to_u8())
+                    || ch == ncurses::KEY_BACKSPACE 
+                    || ch == 8 /* backspace */) {
+            cursor = 0;
+            start_idx = 0;
+            if ch == ncurses::KEY_BACKSPACE || ch == 8 {
+                cdls_cfg.search_string.pop();
+            } else {
+                cdls_cfg.search_string.push(ch.to_char());
+            }        
+            continue;
+        }
         match ch {
             ncurses::KEY_UP => {
                 if cursor > 0 {
@@ -612,25 +707,35 @@ fn main() {
                 if !child.is_dir() {
                     child.pop();
                 }
-                set_current_dir(&child).unwrap(); // todo: handle error
-                break;
+                
+                if cdls_cfg.search_mode {
+                    cdls_cfg.search_mode = false;
+                    cdls_cfg.search_string.clear();                    
+                    cur_path = child;
+                } else {
+                    set_current_dir(&child).unwrap(); // todo: handle error
+                    break;
+                }                
             },
             113 => { /* q */
                 log::warn!("q pressed, exit");
                 break;
             },
             99 => { /* c */
-                column_cfg(maxy, &mut col_disp);
+                column_cfg(maxy, &mut cdls_cfg);
+            }
+            102 => { /* f */
+                cdls_cfg.search_mode = true;
             }
             104 => { /* h */
                 help_screen(maxy);
                 ncurses::getch(); /* press any key to exit help screen */
             },
             115 => { /* s */
-                sort_cfg(maxy, &mut col_disp);
+                sort_cfg(maxy, &mut cdls_cfg);
             },
             _ => {
-                log::debug!("press {}", ch);
+                continue;   
             }
         }
     }

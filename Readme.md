@@ -1,6 +1,6 @@
 # CDLS
 
-CDLS: A cd+ls alternatives for linux system. Help promptly navigate in file system.
+CDLS: A cd+ls alternative for linux system. Help promptly navigate in file system.
 
 # Install
 
@@ -40,7 +40,13 @@ Operations in cdls screen:
 
         In configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.
 
-3. Exit cdls
+3. Search mode
+
+        f                       Start search mode
+        
+        In search mode, use `up/down` to select items, use `enter` to exit search mode. 
+
+4. Exit cdls
 
         Enter button                 Exit cdls and jump to current directory
 
