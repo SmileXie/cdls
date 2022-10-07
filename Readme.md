@@ -44,7 +44,7 @@ Operations in cdls screen:
 
         f                       Start search mode
         
-        In search mode, use `up/down` to select items, use `enter` to exit search mode. 
+        In search mode, type the keywowrds, the item with the higher match score will rank higher. Use `up/down` to select items, use `enter` to exit search mode. 
 
 4. Exit cdls
 

@@ -31,15 +31,19 @@ Options:
 \t-h, --help\t\t\tHelp message\n
 Operations in cdls screen:
 1. Use arrow button to navigate in directory
-\tLeft arrow\t\tgo to parent directory
-\tRight arrow\t\tgo to child directory
-\tUp arrow\t\tgo to previous item
-\tDown arrow\t\tgo to next item
+\tLeft arrow\t\tGo to parent directory
+\tRight arrow\t\tGo to child directory
+\tUp arrow\t\tGo to previous item
+\tDown arrow\t\tGo to next item
 2. Enter button\t\t\tExit cdls and jump to current directory
 3. Configuration Screen
 \tc\t\t\tColumn Display
 \ts\t\t\tSort by
-\tIn configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.";
+\tIn configuration screen, use `arrow buttons` to navigate in configuration, use `space` to select, and use `q` to confirm.
+4. Search Mode
+\tf\t\t\tStart search mode
+\tIn search mode, type the keywowrds, the item with better matching will rank higher. Use `up/down` to select items, use `enter` to exit search mode.
+";
 
 struct CdlsConfig {
     item_type: bool,
@@ -234,12 +238,12 @@ fn get_current_dir_element(cur_path: &PathBuf, cdls_cfg: &CdlsConfig) -> Vec<Pat
             .total_cmp(&a.fuzzy_search_score(&cdls_cfg.search_string))
         )
     } else {
-    match cdls_cfg.sortby {
+        match cdls_cfg.sortby {
             SortBy::Filename => children.sort_by(|a, b| a.cmp(&b)),
             SortBy::Size => children.sort_by(|a, b| a.file_size().cmp(&b.file_size())),
             SortBy::MTime => children.sort_by(|a, b| a.file_modified_time().cmp(&b.file_modified_time())),
             SortBy::ItemType => children.sort_by(|a, b| a.file_type().cmp(&b.file_type())),
-            _ => {}, 
+            //_ => {}, 
         }
     }
 
@@ -590,6 +594,67 @@ fn sort_cfg(maxy: i32, cdls_cfg: &mut CdlsConfig) {
     }
 }
 
+fn search_mode(cur_path: &mut PathBuf, cursor: usize, start_idx: usize, maxy: i32, cdls_cfg: &mut CdlsConfig) {
+
+    let mut cursor = cursor;
+    let mut start_idx = start_idx;
+
+    cdls_cfg.search_mode = true;
+
+    while cdls_cfg.search_mode {
+        let (dir_children, _) = main_screen_update(cur_path, cursor, start_idx, maxy, &cdls_cfg);
+
+        let ch = ncurses::getch();
+        log::debug!("press {}", ch);
+
+        if ch.within_u8_range() && is_printable(ch.to_u8())
+                || ch == ncurses::KEY_BACKSPACE 
+                || ch == 8 /* backspace */ {
+            cursor = 0;
+            start_idx = 0;
+            if ch == ncurses::KEY_BACKSPACE || ch == 8 {
+                cdls_cfg.search_string.pop();
+            } else {
+                cdls_cfg.search_string.push(ch.to_char());
+            }
+        }
+
+        match ch {
+            ncurses::KEY_UP => {
+                if cursor > 0 {
+                    cursor -= 1;
+                    if start_idx > 0 && cursor <= start_idx {
+                        start_idx -= 1;
+                    }
+                }
+            },
+            ncurses::KEY_DOWN => {
+                if cursor < dir_children.len() - 1 {
+                    cursor += 1;
+                    if cursor - start_idx >= (maxy - 3) as usize {
+                        start_idx += 1;
+                    }
+                }
+            },
+            10 | ncurses::KEY_ENTER => { // enter
+                let child =  dir_children[cursor].clone();
+                /*
+                if !child.is_dir() {
+                    child.pop();
+                }
+                */
+                cdls_cfg.search_mode = false;
+                cdls_cfg.search_string.clear();                    
+                *cur_path = child; 
+                break;             
+            },
+            _ => {
+                continue;   
+            }
+        }
+    }
+}
+
 fn main() {
     
     let args: Vec<String> = env::args().collect();
@@ -659,19 +724,6 @@ fn main() {
         maxy = ncurses::getmaxy(ncurses::stdscr());
         let ch = ncurses::getch();
         log::debug!("press {}", ch);
-        if cdls_cfg.search_mode 
-                && ( ch.within_u8_range() && is_printable(ch.to_u8())
-                    || ch == ncurses::KEY_BACKSPACE 
-                    || ch == 8 /* backspace */) {
-            cursor = 0;
-            start_idx = 0;
-            if ch == ncurses::KEY_BACKSPACE || ch == 8 {
-                cdls_cfg.search_string.pop();
-            } else {
-                cdls_cfg.search_string.push(ch.to_char());
-            }        
-            continue;
-        }
         match ch {
             ncurses::KEY_UP => {
                 if cursor > 0 {
@@ -708,14 +760,8 @@ fn main() {
                     child.pop();
                 }
                 
-                if cdls_cfg.search_mode {
-                    cdls_cfg.search_mode = false;
-                    cdls_cfg.search_string.clear();                    
-                    cur_path = child;
-                } else {
-                    set_current_dir(&child).unwrap(); // todo: handle error
-                    break;
-                }                
+                set_current_dir(&child).unwrap(); // todo: handle error
+                break;
             },
             113 => { /* q */
                 log::warn!("q pressed, exit");
@@ -725,7 +771,7 @@ fn main() {
                 column_cfg(maxy, &mut cdls_cfg);
             }
             102 => { /* f */
-                cdls_cfg.search_mode = true;
+                search_mode(&mut cur_path, cursor, start_idx, maxy, &mut cdls_cfg);
             }
             104 => { /* h */
                 help_screen(maxy);
