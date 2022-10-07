@@ -55,6 +55,11 @@ struct CdlsConfig {
     search_string: String,
 }
 
+struct CdlsCurPosition {
+    cur_dir: PathBuf,
+    cur_item: PathBuf,
+}
+
 #[derive(Debug, EnumIter, PartialEq, Eq, PartialOrd, Copy, Clone)]
 enum SortBy {
     Filename,
@@ -207,10 +212,10 @@ impl I32Ext for i32 {
     }
 }
 
-fn get_current_dir_element(cur_path: &PathBuf, cdls_cfg: &CdlsConfig) -> Vec<PathBuf> {
+fn get_current_dir_element(cur_position: &mut CdlsCurPosition, cdls_cfg: &CdlsConfig) -> Vec<PathBuf> {
     let mut children = Vec::new();
 
-    let read_dir_iter = fs::read_dir(cur_path);
+    let read_dir_iter = fs::read_dir(cur_position.cur_dir.clone());
     match read_dir_iter {
         Ok(_) => {},
         Err(e) => {
@@ -245,6 +250,12 @@ fn get_current_dir_element(cur_path: &PathBuf, cdls_cfg: &CdlsConfig) -> Vec<Pat
             SortBy::ItemType => children.sort_by(|a, b| a.file_type().cmp(&b.file_type())),
             //_ => {}, 
         }
+    }
+
+    if children.len() >= 1 && cur_position.cur_dir == cur_position.cur_item {
+        // cur_item not set. set it to the first item
+        cur_position.cur_item = children[0].clone();
+        log::warn!("set current postion: {}", cur_position.cur_item.display());
     }
 
     return children;
@@ -328,18 +339,31 @@ fn get_item_row_str(cdls_cfg: &CdlsConfig, file_type: &str, permissions: &str, s
     return row_str;
 }
 
-fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy: i32, cdls_cfg: &CdlsConfig) 
+fn main_screen_update(cur_position: &mut CdlsCurPosition, maxy: i32, cdls_cfg: &CdlsConfig) 
         -> (Vec<PathBuf>, usize) {
     // todo: display file owner
-    // todo: screen height limit, if too small, prompt. 
+    // todo: screen height limit, if too small, prompt.  maxy < 3
 
     ncurses::clear();
     ncurses::mv(0, 0);
 
-    let bar_str = format!("CDLS # {}\n", basepath.to_str().unwrap());
+    let bar_str = format!("CDLS # {}\n", cur_position.cur_dir.to_str().unwrap());
     ncurses::addstr(&bar_str);
 
-    let dir_children = get_current_dir_element(basepath, cdls_cfg);
+    let dir_children = get_current_dir_element(cur_position, cdls_cfg);
+
+    log::info!("cur item: {}", cur_position.cur_item.display());
+
+    let cursor = match dir_children.iter().position(|x| *x == cur_position.cur_item) {
+        Some(pos) => pos,
+        None => 0,
+    };
+
+    let start_idx = if cursor as i32 - maxy as i32 + 4 < 0 {
+        0
+    } else {
+        (cursor as i32 - maxy as i32 + 4) as usize
+    };   
 
     let mut idx = 0;
     for child in &dir_children {
@@ -418,7 +442,7 @@ fn main_screen_update(basepath: &PathBuf, cursor: usize, start_idx: usize, maxy:
 
     ncurses::refresh();
 
-    return (dir_children, start_idx);
+    return (dir_children, cursor);
 }
 
 fn print_help() {
@@ -594,15 +618,12 @@ fn sort_cfg(maxy: i32, cdls_cfg: &mut CdlsConfig) {
     }
 }
 
-fn search_mode(cur_path: &mut PathBuf, cursor: usize, start_idx: usize, maxy: i32, cdls_cfg: &mut CdlsConfig) {
-
-    let mut cursor = cursor;
-    let mut start_idx = start_idx;
+fn search_mode(cur_position: &mut CdlsCurPosition, maxy: i32, cdls_cfg: &mut CdlsConfig) {
 
     cdls_cfg.search_mode = true;
 
     while cdls_cfg.search_mode {
-        let (dir_children, _) = main_screen_update(cur_path, cursor, start_idx, maxy, &cdls_cfg);
+        let (dir_children, cursor) = main_screen_update(cur_position, maxy, &cdls_cfg);
 
         let ch = ncurses::getch();
         log::debug!("press {}", ch);
@@ -610,8 +631,9 @@ fn search_mode(cur_path: &mut PathBuf, cursor: usize, start_idx: usize, maxy: i3
         if ch.within_u8_range() && is_printable(ch.to_u8())
                 || ch == ncurses::KEY_BACKSPACE 
                 || ch == 8 /* backspace */ {
-            cursor = 0;
-            start_idx = 0;
+            // reset cursor
+            cur_position.cur_item = cur_position.cur_dir.clone();
+
             if ch == ncurses::KEY_BACKSPACE || ch == 8 {
                 cdls_cfg.search_string.pop();
             } else {
@@ -622,31 +644,19 @@ fn search_mode(cur_path: &mut PathBuf, cursor: usize, start_idx: usize, maxy: i3
         match ch {
             ncurses::KEY_UP => {
                 if cursor > 0 {
-                    cursor -= 1;
-                    if start_idx > 0 && cursor <= start_idx {
-                        start_idx -= 1;
-                    }
+                    cur_position.cur_item = dir_children[cursor - 1].clone();
                 }
             },
             ncurses::KEY_DOWN => {
                 if cursor < dir_children.len() - 1 {
-                    cursor += 1;
-                    if cursor - start_idx >= (maxy - 3) as usize {
-                        start_idx += 1;
-                    }
+                    cur_position.cur_item = dir_children[cursor + 1].clone();
                 }
             },
             10 | ncurses::KEY_ENTER => { // enter
-                let child =  dir_children[cursor].clone();
-                /*
-                if !child.is_dir() {
-                    child.pop();
-                }
-                */
+                // exit search mode
                 cdls_cfg.search_mode = false;
                 cdls_cfg.search_string.clear();                    
-                *cur_path = child; 
-                break;             
+                break;     
             },
             _ => {
                 continue;   
@@ -689,7 +699,7 @@ fn main() {
     }
 
     let rst = env::current_dir();
-    let mut cur_path = match rst {
+    let cur_path = match rst {
         Ok(path) => path,
         Err(e) => {
             log::error!("Fail to open current directory. {}", e);
@@ -706,8 +716,6 @@ fn main() {
     ncurses::init_pair(COLOR_PAIR_HIGHLIGHT, ncurses::COLOR_BLACK, ncurses::COLOR_WHITE);
     ncurses::init_pair(COLOR_PAIR_WIN, ncurses::COLOR_BLACK, ncurses::COLOR_CYAN);
 
-    let mut cursor: usize = 0;
-    let mut start_idx: usize = 0;
     let mut maxy = ncurses::getmaxy(ncurses::stdscr());
     let mut cdls_cfg = CdlsConfig {
         item_type: true, 
@@ -719,40 +727,38 @@ fn main() {
         search_string: String::new(),
     };
 
+    let mut cur_position = CdlsCurPosition {
+        cur_dir: cur_path.clone(),
+        cur_item: cur_path.clone(),
+    };
+    
     loop {
-        let (dir_children, _) = main_screen_update(&cur_path, cursor, start_idx, maxy, &cdls_cfg);
+        let (dir_children, cursor) = main_screen_update(&mut cur_position, maxy, &cdls_cfg);
         maxy = ncurses::getmaxy(ncurses::stdscr());
         let ch = ncurses::getch();
         log::debug!("press {}", ch);
+        log::debug!("cursor {}", cursor);
         match ch {
             ncurses::KEY_UP => {
                 if cursor > 0 {
-                    cursor -= 1;
-                    if start_idx > 0 && cursor <= start_idx {
-                        start_idx -= 1;
-                    }
+                    cur_position.cur_item = dir_children[cursor - 1].clone();
                 }
             },
             ncurses::KEY_DOWN => {
                 if cursor < dir_children.len() - 1 {
-                    cursor += 1;
-                    if cursor - start_idx >= (maxy - 3) as usize {
-                        start_idx += 1;
-                    }
+                    cur_position.cur_item = dir_children[cursor + 1].clone();
                 }
             },
             ncurses::KEY_LEFT => {
-                cur_path.pop();
-                cursor = 0;
-                start_idx = 0;
+                cur_position.cur_dir.pop();
+                cur_position.cur_item = cur_position.cur_dir.clone();
             },
             ncurses::KEY_RIGHT => {
                 let child = &dir_children[cursor];
                 if child.is_dir() {
-                    cur_path.push(child.file_name().expect(""));
-                    cursor = 0;
-                    start_idx = 0;
-                }                  
+                    cur_position.cur_dir.push(child.file_name().expect(""));
+                    cur_position.cur_item = cur_position.cur_dir.clone();
+                }
             },
             10 | ncurses::KEY_ENTER => { // enter
                 let mut child =  dir_children[cursor].clone();
@@ -771,7 +777,7 @@ fn main() {
                 column_cfg(maxy, &mut cdls_cfg);
             }
             102 => { /* f */
-                search_mode(&mut cur_path, cursor, start_idx, maxy, &mut cdls_cfg);
+                search_mode(&mut cur_position, maxy, &mut cdls_cfg);
             }
             104 => { /* h */
                 help_screen(maxy);
