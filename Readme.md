@@ -7,7 +7,7 @@ CDLS: A cd+ls alternative for linux system. Help promptly navigate in file syste
 In x86-64 architecture,
 
 ```
-wget https://xs-upload.oss-cn-hangzhou.aliyuncs.com/cdls/release/v0.2/cdls
+wget https://xs-upload.oss-cn-hangzhou.aliyuncs.com/cdls/release/v0.3/cdls
 sudo mv cdls /usr/bin/
 sudo chmod +x /usr/bin/cdls
 ```
@@ -61,7 +61,7 @@ Operations in cdls screen:
 
 ## Leaked Bashs
 
-Once a cdls exited, its context is replaced by a new bash navigating to the targeting directory. The new bash usually inherited from a parent bash.
+Once a cdls exited, its context is replaced by a new bash navigating to the targeting directory. The new bash usually inherited from a parent bash. So if you start cdls multiple times, bashes will derive one by one.
 
 You can use `exit` to exit the new bash and return to the parent one.
 
