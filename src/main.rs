@@ -738,14 +738,15 @@ fn main() {
         let ch = ncurses::getch();
         log::debug!("press {}", ch);
         log::debug!("cursor {}", cursor);
+        log::debug!("dir_children len {}", dir_children.len());
         match ch {
             ncurses::KEY_UP => {
-                if cursor > 0 {
+                if cursor > 0 && dir_children.len() > 1  {
                     cur_position.cur_item = dir_children[cursor - 1].clone();
                 }
             },
             ncurses::KEY_DOWN => {
-                if cursor < dir_children.len() - 1 {
+                if dir_children.len() >= 1 && cursor < dir_children.len() - 1 {
                     cur_position.cur_item = dir_children[cursor + 1].clone();
                 }
             },
